@@ -55,29 +55,6 @@ Dự án được triển khai theo mô hình kiến trúc **3 tầng (3-tier)**
 Sharding: node_id = UserID % N (Hash-based Horizontal Fragmentation)
 ```
 
-### 📊 Sơ đồ kiến trúc trực quan (Mermaid)
-
-```mermaid
-graph TD
-    Client[Client / Benchmark Suite <br> benchmark.py / run_benchmark.py] -->|HTTP GET /aggregate| Coord[Coordinator <br> Port 800X]
-
-    subgraph cluster ["Cluster phân tán (Port 5X00+)"]
-        Coord -->|HTTP POST /query <br> ThreadPoolExecutor| Node0[Node 0 <br> SQLite Shard 0]
-        Coord -->|HTTP POST /query <br> ThreadPoolExecutor| Node1[Node 1 <br> SQLite Shard 1]
-        Coord -->|HTTP POST /query <br> ThreadPoolExecutor| Node2[Node 2 <br> SQLite Shard 2]
-        Coord -->|HTTP POST /query <br> ThreadPoolExecutor| Node3[Node 3 <br> SQLite Shard 3]
-    end
-
-    Node0 -->|Duyệt chỉ mục| DB0[(node_0.db <br> idx_userid)]
-    Node1 -->|Duyệt chỉ mục| DB1[(node_1.db <br> idx_userid)]
-    Node2 -->|Duyệt chỉ mục| DB2[(node_2.db <br> idx_userid)]
-    Node3 -->|Duyệt chỉ mục| DB3[(node_3.db <br> idx_userid)]
-
-    style Client fill:#f9f,stroke:#333,stroke-width:2px
-    style Coord fill:#bbf,stroke:#333,stroke-width:2px
-    style cluster fill:#f9f9f9,stroke:#666,stroke-dasharray: 5 5
-```
-
 ### 🔄 Quy trình xử lý truy vấn (Scatter-Gather)
 
 ```mermaid
@@ -105,7 +82,7 @@ sequenceDiagram
 4. Coordinator cộng dồn (sum) các giá trị nhận được.
 5. Coordinator trả về JSON kết quả tổng hợp cho client.
 
-- **Thước đo chính:** $\max(\text{query\_time\_ms})$ – thời gian của node chậm nhất (bottleneck thực tế).
+- **Thước đo chính:** `max(query_time_ms)` – thời gian của node chậm nhất (bottleneck thực tế).
 
 ---
 
@@ -223,7 +200,7 @@ Kết quả đo đạc chính thức được trích xuất từ tệp `results/
 
 ### 1. Chi tiết thời gian thực thi (ms)
 
-Thời gian thực thi được tính bằng $\max(\text{query\_time\_ms})$ – thời gian SQL của node chậm nhất (bottleneck thực tế).
+Thời gian thực thi được tính bằng `max(query_time_ms)` – thời gian SQL của node chậm nhất (bottleneck thực tế).
 
 | Cấu hình    | Lần 1 | Lần 2 | Lần 3 | Lần 4 | Lần 5 | Trung bình (Mean) | Trung vị (Median) | P99 (Tail) | Độ lệch chuẩn (Std) |
 | :---------- | :---: | :---: | :---: | :---: | :---: | :---------------: | :---------------: | :--------: | :-----------------: |
