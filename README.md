@@ -257,11 +257,11 @@ $$f = \frac{\frac{1}{2.692} - \frac{1}{4}}{1 - \frac{1}{4}} = \frac{0.3715 - 0.2
 
 ### 4. Biểu đồ trực quan hóa hiệu năng
 
-Các biểu đồ được sinh tự động nằm trong thư mục [analysis/charts/](file:///d:/ShardMasters/analysis/charts):
+Các biểu đồ được sinh tự động nằm trong thư mục [analysis/charts/](analysis/charts/):
 
-- **[execution_time.png](file:///d:/ShardMasters/analysis/charts/execution_time.png):** So sánh Mean, Median và P99 theo số node.
-- **[speedup_ratio.png](file:///d:/ShardMasters/analysis/charts/speedup_ratio.png):** Tốc độ tăng tốc thực tế so với lý tưởng.
-- **[efficiency.png](file:///d:/ShardMasters/analysis/charts/efficiency.png):** Hiệu suất song song theo số node.
+|              So sánh thời gian thực thi               |           Tỷ lệ tăng tốc (Speedup Ratio)            |       Hiệu suất song song (Efficiency)        |
+| :---------------------------------------------------: | :-------------------------------------------------: | :-------------------------------------------: |
+| ![Execution Time](analysis/charts/execution_time.png) | ![Speedup Ratio](analysis/charts/speedup_ratio.png) | ![Efficiency](analysis/charts/efficiency.png) |
 
 ---
 
