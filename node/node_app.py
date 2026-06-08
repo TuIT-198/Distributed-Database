@@ -129,7 +129,6 @@ def query():
     finally:
         conn.close()
 
-
 @app.route('/info', methods=['GET'])
 def info():
     """Trả về thông tin chi tiết của node."""
@@ -148,7 +147,6 @@ def info():
         'row_count': row_count,
         'db_size_bytes': db_size
     })
-
 
 if __name__ == '__main__':
     sys.stdout.reconfigure(encoding='utf-8')

@@ -8,11 +8,8 @@ import sys
 import csv
 import os
 
-
 def get_shard_id(user_id: int, num_nodes: int) -> int:
-    """Hàm sharding: xác định phân mảnh dựa trên UserID."""
     return user_id % num_nodes
-
 
 def shard_data(input_path: str, output_dir: str, num_nodes: int):
     """Đọc file CSV đầu vào và phân chia dữ liệu vào các phân mảnh."""
@@ -30,17 +27,13 @@ def shard_data(input_path: str, output_dir: str, num_nodes: int):
             f = open(file_path, 'w', newline='', encoding='utf-8')
             files[node_id] = f
             writers[node_id] = csv.writer(f)
-            # Ghi dòng tiêu đề cho mỗi phân mảnh
             writers[node_id].writerow(['LogID', 'UserID', 'Action', 'Timestamp'])
             row_counts[node_id] = 0
-
         # Đọc file đầu vào và phân phối từng dòng
         total_rows = 0
         with open(input_path, 'r', encoding='utf-8') as infile:
             reader = csv.reader(infile)
-            # Bỏ qua dòng tiêu đề
             next(reader)
-
             for row in reader:
                 user_id = int(row[1])
                 shard_id = get_shard_id(user_id, num_nodes)
@@ -54,7 +47,6 @@ def shard_data(input_path: str, output_dir: str, num_nodes: int):
             f.close()
 
     return total_rows, row_counts
-
 
 def print_stats(total_rows: int, row_counts: dict, num_nodes: int):
     """In thống kê phân bố dữ liệu cho từng phân mảnh."""
@@ -74,9 +66,9 @@ def print_stats(total_rows: int, row_counts: dict, num_nodes: int):
 
     # Xác minh tổng số dòng khớp với đầu vào
     if verified_total == total_rows:
-        print(f"✓ Xác minh thành công: tổng số dòng khớp ({total_rows:,})")
+        print(f"Xác minh thành công: tổng số dòng khớp ({total_rows:,})")
     else:
-        print(f"✗ LỖI: Tổng dòng phân mảnh ({verified_total:,}) "
+        print(f"LỖI: Tổng dòng phân mảnh ({verified_total:,}) "
               f"≠ dòng đầu vào ({total_rows:,})")
 
 

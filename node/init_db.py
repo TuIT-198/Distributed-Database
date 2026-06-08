@@ -25,14 +25,14 @@ def init_database(node_id: int, csv_dir: str, db_dir: str):
 
     # Kiểm tra file CSV tồn tại
     if not os.path.exists(csv_path):
-        print(f"LỖI: Không tìm thấy file CSV: {csv_path}")
+        print(f"Không tìm thấy file CSV: {csv_path}")
         print("Hãy chạy shard.py trước để tạo các phân mảnh.")
         exit(1)
 
     # Tạo thư mục database nếu chưa tồn tại
     os.makedirs(db_dir, exist_ok=True)
 
-    # Xóa database cũ nếu tồn tại (để đảm bảo trạng thái sạch)
+    # Xóa database cũ nếu tồn tại
     if os.path.exists(db_path):
         os.remove(db_path)
         print("  Đã xóa database cũ.")
@@ -51,15 +51,14 @@ def init_database(node_id: int, csv_dir: str, db_dir: str):
         )
     ''')
 
-    # QUAN TRỌNG: Tạo chỉ mục trên UserID để tối ưu truy vấn GROUP BY
+    #Tạo chỉ mục trên UserID để tối ưu truy vấn GROUP BY
     cursor.execute('CREATE INDEX idx_userid ON logs(UserID)')
 
     # Đọc toàn bộ dữ liệu từ CSV
-    print("  Đang đọc dữ liệu từ CSV...")
+    print("Đang đọc dữ liệu từ CSV...")
     rows = []
     with open(csv_path, 'r', encoding='utf-8') as f:
         reader = csv.reader(f)
-        # Bỏ qua dòng tiêu đề
         next(reader)
         for row in reader:
             # Chuyển đổi kiểu dữ liệu: LogID và UserID thành int
@@ -69,7 +68,7 @@ def init_database(node_id: int, csv_dir: str, db_dir: str):
     print(f"  Đã đọc {total_rows:,} dòng từ CSV.")
 
     # Chèn dữ liệu theo batch để tối ưu hiệu suất
-    print(f"  Đang chèn dữ liệu (batch size = {BATCH_SIZE:,})...")
+    print(f"Đang chèn dữ liệu (batch size = {BATCH_SIZE:,})...")
     for i in range(0, total_rows, BATCH_SIZE):
         batch = rows[i:i + BATCH_SIZE]
         cursor.executemany(
@@ -88,12 +87,11 @@ def init_database(node_id: int, csv_dir: str, db_dir: str):
 
     print(f"  Số dòng đã chèn: {db_count:,}")
     if db_count == total_rows:
-        print(f"  ✓ Xác minh thành công: {db_count:,} dòng khớp.")
+        print(f"Xác minh thành công: {db_count:,} dòng khớp.")
     else:
-        print(f"  ✗ LỖI: CSV có {total_rows:,} dòng nhưng DB có {db_count:,} dòng.")
+        print(f"LỖI: CSV có {total_rows:,} dòng nhưng DB có {db_count:,} dòng.")
 
     print("Hoàn tất khởi tạo database!")
-
 
 if __name__ == '__main__':
     sys.stdout.reconfigure(encoding='utf-8')

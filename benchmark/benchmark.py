@@ -1,6 +1,5 @@
 """
 Benchmark - Đo hiệu suất hệ thống phân tán với các cấu hình node khác nhau.
-
 Tự động hóa quy trình benchmark cho 1, 2, 4 node:
 - Phân mảnh dữ liệu
 - Khởi tạo database cho từng node
@@ -8,7 +7,6 @@ Tự động hóa quy trình benchmark cho 1, 2, 4 node:
 - Thực hiện warmup và benchmark
 - Thu thập và xuất kết quả
 """
-
 import os
 import sys
 import time
@@ -18,56 +16,42 @@ import subprocess
 import statistics
 from datetime import datetime
 from pathlib import Path
-
 import requests
-
 # === Cấu hình benchmark ===
-CONFIGS = [1, 2, 4]              # Số node cần benchmark
-RUNS_PER_CONFIG = 5              # Số lần chạy chính cho mỗi cấu hình
-WARMUP_RUNS = 2                  # Số lần chạy khởi động (không tính kết quả)
-
-NODE_BASE_PORT = 5000            # Port cơ sở cho các node
-COORDINATOR_BASE_PORT = 8000     # Port cơ sở cho coordinator (sẽ cộng thêm n_nodes)
-STARTUP_WAIT = 5                 # Thời gian chờ khởi động tiến trình (giây)
-
-# Xác định thư mục gốc dự án (thư mục cha của benchmark/)
+CONFIGS = [1, 2, 4]              
+RUNS_PER_CONFIG = 5   
+WARMUP_RUNS = 2                
+NODE_BASE_PORT = 5000            
+COORDINATOR_BASE_PORT = 8000    
+STARTUP_WAIT = 5                
+# Xác định thư mục cha của benchmark
 PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
-
-
+# Dọn dẹp tất cả tiến trình: coordinator và các node.
 def cleanup_processes(coordinator_proc, node_procs):
-    """
-    Dọn dẹp tất cả tiến trình: coordinator và các node.
-    Trên Windows dùng kill() trực tiếp để đảm bảo port được giải phóng.
-    """
     all_procs = []
     if coordinator_proc:
         all_procs.append(coordinator_proc)
     all_procs.extend([p for p in node_procs if p])
-
     for proc in all_procs:
         if proc.poll() is None:
             try:
-                proc.kill()  # Dùng kill() thay vì terminate() trên Windows
+                proc.kill() 
                 proc.wait(timeout=5)
             except Exception:
                 pass
-
-
+#Xóa tất cả file database node_*.db trong thư mục node/.
 def cleanup_db_files():
-    """Xóa tất cả file database node_*.db trong thư mục node/."""
     db_pattern = os.path.join(PROJECT_ROOT, "node", "node_*.db")
     for db_file in glob.glob(db_pattern):
         try:
             os.remove(db_file)
         except OSError:
             pass
-
-
-def wait_for_health(url, max_retries=15, interval=1):
-    """
+"""
     Chờ coordinator sẵn sàng bằng cách poll endpoint /health.
     Trả về True nếu thành công, False nếu hết số lần thử.
-    """
+"""
+def wait_for_health(url, max_retries=15, interval=1):
     for attempt in range(max_retries):
         try:
             resp = requests.get(f"{url}/health", timeout=30)
@@ -79,35 +63,26 @@ def wait_for_health(url, max_retries=15, interval=1):
             pass
         time.sleep(interval)
     return False
-
-
-def run_benchmark_for_config(n_nodes):
-    """
+"""
     Chạy benchmark cho một cấu hình node cụ thể.
-    Trả về danh sách thời gian thực thi (ms) cho mỗi lần chạy.
-    """
-    # Dùng port khác nhau cho mỗi cấu hình để tránh conflict trên Windows
+    Trả về danh sách thời gian thực thi cho mỗi lần chạy.
+"""
+def run_benchmark_for_config(n_nodes):
     coordinator_port = COORDINATOR_BASE_PORT + n_nodes
-
     print(f"\n{'=' * 50}")
     print(f"=== Benchmarking với {n_nodes} node ===")
     print(f"{'=' * 50}")
-
     coordinator_proc = None
     node_procs = []
-
     try:
-        # Bước 1: Phân mảnh dữ liệu
-        print(f"[1/6] Phân mảnh dữ liệu cho {n_nodes} node...")
+        print(f"Phân mảnh dữ liệu cho {n_nodes} node...")
         subprocess.run(
             [sys.executable, os.path.join("data", "shard.py"), "--nodes", str(n_nodes)],
             cwd=PROJECT_ROOT,
             check=True,
             capture_output=True,
         )
-
-        # Bước 2: Khởi tạo database cho từng node
-        print(f"[2/6] Khởi tạo database cho {n_nodes} node...")
+        print(f"Khởi tạo database cho {n_nodes} node...")
         for i in range(n_nodes):
             subprocess.run(
                 [
@@ -121,11 +96,10 @@ def run_benchmark_for_config(n_nodes):
                 check=True,
                 capture_output=True,
             )
-
-        # Bước 3: Khởi động các tiến trình node
+        # Khởi động các tiến trình node
         # Dùng port range riêng cho mỗi cấu hình để tránh TIME_WAIT conflict
         node_base = NODE_BASE_PORT + n_nodes * 100  # 5100, 5200, 5400
-        print(f"[3/6] Khởi động {n_nodes} node (port {node_base}-{node_base + n_nodes - 1})...")
+        print(f"Khởi động {n_nodes} node (port {node_base}-{node_base + n_nodes - 1})...")
         for i in range(n_nodes):
             env = {**os.environ, "NODE_ID": str(i), "DB_DIR": "node",
                    "NODE_PORT": str(node_base + i)}
@@ -137,9 +111,7 @@ def run_benchmark_for_config(n_nodes):
                 stderr=subprocess.DEVNULL,
             )
             node_procs.append(proc)
-
-        # Bước 4: Khởi động coordinator
-        print("[4/6] Khởi động coordinator...")
+        print("Khởi động coordinator...")
         node_urls = [f"http://localhost:{node_base + i}" for i in range(n_nodes)]
         coordinator_proc = subprocess.Popen(
             [
@@ -155,26 +127,24 @@ def run_benchmark_for_config(n_nodes):
 
         # Chờ khởi động
         time.sleep(STARTUP_WAIT)
-
-        # Bước 5: Kiểm tra health
-        print("[5/6] Kiểm tra trạng thái hệ thống...")
+        print("Kiểm tra trạng thái hệ thống...")
         coordinator_url = f"http://localhost:{coordinator_port}"
         if not wait_for_health(coordinator_url):
             # Debug: kiểm tra coordinator có crash không
             if coordinator_proc.poll() is not None:
                 stderr_out = coordinator_proc.stderr.read().decode('utf-8', errors='replace')
-                print(f"  [DEBUG] Coordinator đã thoát với mã: {coordinator_proc.returncode}")
+                print(f"Coordinator đã thoát với mã: {coordinator_proc.returncode}")
                 if stderr_out:
-                    print(f"  [DEBUG] Stderr: {stderr_out[:500]}")
+                    print(f"Stderr: {stderr_out[:500]}")
             # Kiểm tra node nào đang chạy
             for i, proc in enumerate(node_procs):
                 if proc.poll() is not None:
-                    print(f"  [DEBUG] Node {i} đã thoát với mã: {proc.returncode}")
-            print(f"[LỖI] Không thể kết nối đến coordinator sau nhiều lần thử. Bỏ qua cấu hình {n_nodes} node.")
+                    print(f"Node {i} đã thoát với mã: {proc.returncode}")
+            print(f"Không thể kết nối đến coordinator sau nhiều lần thử. Bỏ qua cấu hình {n_nodes} node.")
             return None
 
         # Warmup - Khởi động nóng để ổn định hiệu suất
-        print(f"[6/6] Warmup ({WARMUP_RUNS} lần)...")
+        print(f"Warmup ({WARMUP_RUNS} lần)...")
         for _ in range(WARMUP_RUNS):
             try:
                 requests.get(f"{coordinator_url}/aggregate", timeout=30)
@@ -182,14 +152,14 @@ def run_benchmark_for_config(n_nodes):
                 pass
 
         # Benchmark chính
-        print(f"  Benchmark ({RUNS_PER_CONFIG} lần):")
+        print(f"Benchmark ({RUNS_PER_CONFIG} lần):")
         times = []
         for run_idx in range(1, RUNS_PER_CONFIG + 1):
             try:
                 resp = requests.get(f"{coordinator_url}/aggregate", timeout=60)
                 resp.raise_for_status()
                 result = resp.json()
-                # Đo thời gian query thực tế trên node (chỉ SQL, không tính HTTP overhead)
+                # Đo thời gian query thực tế trên node
                 # max(query_times_ms) = thời gian node chậm nhất (bottleneck)
                 query_times = result.get("query_times_ms", [])
                 if query_times:
@@ -204,7 +174,7 @@ def run_benchmark_for_config(n_nodes):
         return times
 
     finally:
-        # Dọn dẹp tiến trình (luôn thực hiện dù có lỗi hay không)
+        # Dọn dẹp tiến trình
         cleanup_processes(coordinator_proc, node_procs)
         cleanup_db_files()
         # Chờ giải phóng port
@@ -238,13 +208,11 @@ def main():
     """Hàm chính: chạy benchmark và xuất kết quả."""
     sys.stdout.reconfigure(encoding='utf-8')
     print("=" * 60)
-    print("  ShardMasters — Benchmark Hiệu suất Horizontal Scaling")
+    print("Hiệu suất Horizontal Scaling")
     print("=" * 60)
-
     # Tạo thư mục kết quả
     results_dir = os.path.join(PROJECT_ROOT, "results")
     os.makedirs(results_dir, exist_ok=True)
-
     # Lưu tất cả kết quả benchmark
     all_results = {}  # {n_nodes_str: [times]}
     csv_rows = []     # Dữ liệu cho file CSV
@@ -256,10 +224,10 @@ def main():
             for run_idx, t in enumerate(times, 1):
                 csv_rows.append((n_nodes, run_idx, t))
         else:
-            print(f"\n[CẢNH BÁO] Cấu hình {n_nodes} node thất bại hoặc không có kết quả.")
+            print(f"\nCấu hình {n_nodes} node thất bại hoặc không có kết quả.")
 
     if not all_results:
-        print("\n[LỖI] Không có kết quả benchmark nào. Kết thúc.")
+        print("\nKhông có kết quả benchmark nào. Kết thúc.")
         sys.exit(1)
 
     # === Xuất file CSV ===
@@ -268,7 +236,7 @@ def main():
         f.write("nodes,run,execution_time_ms\n")
         for nodes, run, t in csv_rows:
             f.write(f"{nodes},{run},{t:.1f}\n")
-    print(f"\n[OK] Đã lưu kết quả CSV: {csv_path}")
+    print(f"\nĐã lưu kết quả CSV: {csv_path}")
 
     # === Tính toán thống kê ===
     configs_summary = {}
@@ -325,12 +293,12 @@ def main():
     json_path = os.path.join(results_dir, "benchmark_summary.json")
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2, ensure_ascii=False)
-    print(f"[OK] Đã lưu tổng kết JSON: {json_path}")
+    print(f"Đã lưu tổng kết JSON: {json_path}")
 
     # === In bảng tổng kết ===
     print_summary_table(summary)
 
-    print(f"\n[HOÀN TẤT] Benchmark xong. Kết quả tại: {results_dir}")
+    print(f"\nBenchmark xong. Kết quả tại: {results_dir}")
 
 
 if __name__ == "__main__":

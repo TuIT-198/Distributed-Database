@@ -1,6 +1,5 @@
 """
-Analyze - Phân tích kết quả benchmark và tạo biểu đồ chuyên nghiệp.
-
+Analyze - Phân tích kết quả benchmark và tạo biểu đồ
 Đọc file benchmark_summary.json và tạo 3 biểu đồ:
 1. Thời gian thực thi theo số node
 2. Tỷ lệ tăng tốc thực tế vs lý tưởng
@@ -13,7 +12,7 @@ import json
 from pathlib import Path
 
 import matplotlib
-matplotlib.use("Agg")  # Backend không cần GUI, phù hợp server/CI
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 # Xác định thư mục gốc dự án
@@ -33,19 +32,15 @@ SAMPLE_DATA = {
 
 
 def load_results():
-    """
-    Đọc file benchmark_summary.json.
-    Nếu không tồn tại, tạo file mẫu và sử dụng dữ liệu mẫu.
-    """
     json_path = os.path.join(PROJECT_ROOT, "results", "benchmark_summary.json")
 
     if os.path.exists(json_path):
-        print(f"[OK] Đọc kết quả từ: {json_path}")
+        print(f"Đọc kết quả từ: {json_path}")
         with open(json_path, "r", encoding="utf-8") as f:
             return json.load(f)
     else:
-        print(f"[CẢNH BÁO] Không tìm thấy file: {json_path}")
-        print("  Tạo dữ liệu mẫu để demo biểu đồ...")
+        print(f"Không tìm thấy file: {json_path}")
+        print("Tạo dữ liệu mẫu để demo biểu đồ...")
 
         # Tạo thư mục results nếu chưa có
         results_dir = os.path.join(PROJECT_ROOT, "results")
@@ -54,7 +49,7 @@ def load_results():
         # Lưu dữ liệu mẫu
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(SAMPLE_DATA, f, indent=2, ensure_ascii=False)
-        print(f"  [OK] Đã tạo file mẫu: {json_path}")
+        print(f"Đã tạo file mẫu: {json_path}")
 
         return SAMPLE_DATA
 
@@ -79,7 +74,6 @@ def setup_chart_style():
 def chart_execution_time(configs, charts_dir):
     """
     Biểu đồ 1: So sánh Mean, Median và P99 theo số lượng node.
-    Grouped bar chart thể hiện đầy đủ các chỉ số thống kê (Tail Latency).
     """
     # Sắp xếp theo số node
     sorted_keys = sorted(configs.keys(), key=lambda x: int(x))
@@ -90,15 +84,13 @@ def chart_execution_time(configs, charts_dir):
     stds = [configs[k]["std_ms"] for k in sorted_keys]
 
     x = list(range(len(nodes)))
-    width = 0.25  # Độ rộng mỗi cột
-
+    width = 0.25 
     fig, ax = plt.subplots(figsize=(10, 6))
     
     # Tính tọa độ cho từng cột trong nhóm
     x_mean = [val - width for val in x]
     x_median = x
     x_p99 = [val + width for val in x]
-
     # Vẽ các cột
     rects1 = ax.bar(x_mean, means, width, label='Mean (Trung bình)', color='#2980b9', edgecolor='white', yerr=stds, capsize=4, error_kw={"linewidth": 1.2, "capthick": 1.2})
     rects2 = ax.bar(x_median, medians, width, label='Median (Trung vị)', color='#5dade2', edgecolor='white')
@@ -110,7 +102,7 @@ def chart_execution_time(configs, charts_dir):
             height = rect.get_height()
             ax.annotate(f'{height:.1f}',
                         xy=(rect.get_x() + rect.get_width() / 2, height),
-                        xytext=(0, 3),  # 3 points vertical offset
+                        xytext=(0, 3),
                         textcoords="offset points",
                         ha='center', va='bottom', fontsize=9, fontweight='bold')
 
@@ -132,13 +124,11 @@ def chart_execution_time(configs, charts_dir):
     save_path = os.path.join(charts_dir, "execution_time.png")
     plt.savefig(save_path)
     plt.close()
-    print(f"  [OK] Đã lưu biểu đồ: {save_path}")
-
+    print(f"Đã lưu biểu đồ: {save_path}")
 
 def chart_speedup(speedup_data, charts_dir):
     """
     Biểu đồ 2: Tỷ lệ tăng tốc thực tế so với lý tưởng.
-    Line chart với 2 đường: thực tế và lý tưởng (dashed).
     """
     sorted_keys = sorted(speedup_data.keys(), key=lambda x: int(x))
     nodes = [int(k) for k in sorted_keys]
@@ -147,7 +137,7 @@ def chart_speedup(speedup_data, charts_dir):
 
     fig, ax = plt.subplots()
 
-    # Đường lý tưởng (dashed)
+    # Đường lý tưởng 
     ax.plot(
         nodes, ideal,
         "--o",
@@ -207,13 +197,12 @@ def chart_speedup(speedup_data, charts_dir):
     save_path = os.path.join(charts_dir, "speedup_ratio.png")
     plt.savefig(save_path)
     plt.close()
-    print(f"  [OK] Đã lưu biểu đồ: {save_path}")
+    print(f"Đã lưu biểu đồ: {save_path}")
 
 
 def chart_efficiency(efficiency_data, charts_dir):
     """
     Biểu đồ 3: Hiệu suất song song E(n) = S(n)/n.
-    Bar chart với đường tham chiếu 100% efficiency.
     """
     sorted_keys = sorted(efficiency_data.keys(), key=lambda x: int(x))
     nodes = [int(k) for k in sorted_keys]
@@ -348,7 +337,7 @@ def main():
     # In bảng tổng kết
     print_summary_table(configs, speedup, efficiency)
 
-    print(f"\n[HOÀN TẤT] Biểu đồ đã được lưu tại: {charts_dir}")
+    print(f"\nBiểu đồ đã được lưu tại: {charts_dir}")
 
 
 if __name__ == "__main__":
