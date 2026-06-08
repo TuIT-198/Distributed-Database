@@ -61,7 +61,7 @@ Sharding: node_id = UserID % N (Hash-based Horizontal Fragmentation)
 graph TD
     Client[Client / Benchmark Suite <br> benchmark.py / run_benchmark.py] -->|HTTP GET /aggregate| Coord[Coordinator <br> Port 800X]
 
-    subgraph Cluster phân tán (Port 5X00+)
+    subgraph cluster ["Cluster phân tán (Port 5X00+)"]
         Coord -->|HTTP POST /query <br> ThreadPoolExecutor| Node0[Node 0 <br> SQLite Shard 0]
         Coord -->|HTTP POST /query <br> ThreadPoolExecutor| Node1[Node 1 <br> SQLite Shard 1]
         Coord -->|HTTP POST /query <br> ThreadPoolExecutor| Node2[Node 2 <br> SQLite Shard 2]
@@ -75,7 +75,7 @@ graph TD
 
     style Client fill:#f9f,stroke:#333,stroke-width:2px
     style Coord fill:#bbf,stroke:#333,stroke-width:2px
-    style Cluster phân tán fill:#f9f9f9,stroke:#666,stroke-dasharray: 5 5
+    style cluster fill:#f9f9f9,stroke:#666,stroke-dasharray: 5 5
 ```
 
 ### 🔄 Quy trình xử lý truy vấn (Scatter-Gather)
@@ -83,9 +83,9 @@ graph TD
 ```mermaid
 sequenceDiagram
     autonumber
-    participant Client as Client/Benchmark
-    participant Coord as Coordinator (Port 800X)
-    participant Nodes as Shard Nodes (0..N-1)
+    participant Client as "Client/Benchmark"
+    participant Coord as "Coordinator (Port 800X)"
+    participant Nodes as "Shard Nodes (0..N-1)"
 
     Client->>Coord: GET /aggregate
     Note over Coord: Ghi nhận thời gian bắt đầu
