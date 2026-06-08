@@ -1,244 +1,230 @@
 # 🔀 ShardMasters — Horizontal Scaling Efficiency
 
-> **Đồ án môn Cơ sở dữ liệu phân tán | Project #94 — "Sharding Gains"**
+> **Đồ án môn Cơ sở dữ liệu phân tán | Đề tài #94: "Sharding Gains"**
+>
+> Một mô hình thực nghiệm giả lập hệ thống cơ sở dữ liệu phân tán để đo lường định lượng tốc độ tăng tốc (Speedup) và hiệu suất song song (Efficiency) khi thực hiện phân mảnh ngang dạng băm (Hash‑based Horizontal Sharding).
 
-`Python 3.10+` • `Flask` • `SQLite` • `matplotlib`
-
----
-
-## 📝 Mô tả
-
-Hệ thống mô phỏng cơ sở dữ liệu phân tán sử dụng **horizontal hash-based sharding** để đánh giá hiệu quả mở rộng ngang. Dự án đo lường **Speedup Ratio** (tỷ lệ tăng tốc) khi phân tán truy vấn aggregation `COUNT(*) GROUP BY UserID` trên tập dữ liệu 1 triệu bản ghi `User_Logs` với các cấu hình 1 → 2 → 4 nodes. Kết quả được phân tích dựa trên lý thuyết **Amdahl's Law** và các chỉ số **Efficiency** nhằm làm rõ giới hạn của horizontal scaling trong hệ thống phân tán.
+**Công nghệ sử dụng:** Python 3.10+ | Flask 3.1+ | SQLite | Matplotlib
 
 ---
 
-## 🏗️ Kiến trúc hệ thống
+## 📝 Mô tả dự án
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                     CLIENT / BENCHMARK                   │
-│                   (benchmark.py)                         │
-└──────────────────────┬──────────────────────────────────┘
-                       │ HTTP GET /aggregate
-                       ▼
-              ┌─────────────────┐
-              │   COORDINATOR   │
-              │  (Port 8000)    │
-              │ Merge & Reduce  │
-              └──┬──────┬────┬──┘
-                 │      │    │
-     ┌───────────┘      │    └───────────┐
-     │ POST /query      │               │
-     ▼                  ▼               ▼
-┌──────────┐     ┌──────────┐    ┌──────────┐
-│  Node 0  │     │  Node 1  │    │  Node 2  │  ...
-│ Port 5000│     │ Port 5001│    │ Port 5002│
-│ SQLite   │     │ SQLite   │    │ SQLite   │
-│ Shard 0  │     │ Shard 1  │    │ Shard 2  │
-└──────────┘     └──────────┘    └──────────┘
+Hệ thống mô phỏng cơ sở dữ liệu phân tán sử dụng chiến lược **phân mảnh ngang sơ cấp dạng băm** (Hash-based Horizontal Fragmentation) để đánh giá hiệu quả của việc mở rộng ngang (horizontal scaling).
+
+Đồ án đo lường và phân tích thời gian thực thi của truy vấn phân tích tổng hợp kinh điển:
+
+```sql
+SELECT UserID, COUNT(*) FROM logs GROUP BY UserID
+Truy vấn này được thực thi song song trên cụm gồm 1 → 2 → 4 nodes lưu trữ độc lập trên SQLite. Dữ liệu thử nghiệm gồm 1.000.000 bản ghi nhật ký hoạt động (User_Logs).
+
+Kết quả thực nghiệm được đối chiếu với Định luật Amdahl để tính toán phần xử lý tuần tự (serial fraction) và xác định giới hạn tăng tốc thực tế của hệ thống.
+
+🏗️ Kiến trúc hệ thống
+Dự án được triển khai theo mô hình kiến trúc 3 tầng (3-tier) phân tán giả lập trên localhost:
+
+text
+                                  ╔═══════════════════════╗
+                                  ║   CLIENT / BENCHMARK  ║
+                                  ║     (benchmark.py)    ║
+                                  ╚══════════╦════════════╝
+                                             ║
+                                             ║ HTTP GET /aggregate
+                                             ▼
+                                  ╔═══════════════════════╗
+                                  ║      COORDINATOR      ║
+                                  ║     (Port 8000+)      ║
+                                  ║    Merge & Reduce     ║
+                                  ╚══╦═══╦═════════╦═══╦══╝
+                                     ║   ║         ║   ║
+         ╔═══════════════════════════╝   ║         ║   ╚═══════════════════════════╗
+         ║ HTTP POST /query              ╚═╗     ╔═╝              HTTP POST /query ║
+         ▼                                 ▼     ▼                                 ▼
+   ╔══════════╗                      ╔══════════╗  ╔══════════╗                      ╔══════════╗
+   ║  Node 0  ║                      ║  Node 1  ║  ║  Node 2  ║                      ║  Node 3  ║
+   ║ Port 5X00║                      ║ Port 5X01║  ║ Port 5X02║                      ║ Port 5X03║
+   ║  SQLite  ║                      ║  SQLite  ║  ║  SQLite  ║                      ║  SQLite  ║
+   ║ Shard 0  ║                      ║ Shard 1  ║  ║ Shard 2  ║                      ║ Shard 3  ║
+   ╚══════════╝                      ╚══════════╝  ╚══════════╝                      ╚══════════╝
 
 Sharding: node_id = UserID % N (Hash-based Horizontal Fragmentation)
-```
+Quy trình xử lý truy vấn (Scatter-Gather)
+Client gửi GET /aggregate đến Coordinator.
 
-Hệ thống sử dụng kiến trúc **Client → Coordinator → Node** (3-tier):
+Coordinator dùng ThreadPoolExecutor gửi POST /query song song đến N node.
 
-- **Client/Benchmark**: Gửi truy vấn aggregation đến Coordinator và đo thời gian phản hồi.
-- **Coordinator** (Port 8000): Nhận truy vấn từ Client, phân phối song song đến các Node qua REST API, thu thập và merge kết quả.
-- **Node** (Port 5000+): Mỗi node lưu trữ một shard dữ liệu trong SQLite, thực thi truy vấn cục bộ và trả về kết quả.
+Mỗi node thực thi GROUP BY trên SQLite cục bộ, trả về JSON summary (unique_users, total_logs, query_time_ms).
 
----
+Coordinator cộng dồn (sum) các giá trị nhận được.
 
-## 📁 Cấu trúc dự án
+Coordinator trả về JSON kết quả tổng hợp cho client.
 
-```
+Thước đo chính: max(query_time_ms) – thời gian của node chậm nhất (bottleneck thực tế).
+
+⚡ Chiến lược phân mảnh dữ liệu
+Hệ thống áp dụng phương pháp phân mảnh ngang sơ cấp dựa trên hàm băm (modulo):
+
+NodeID = UserID mod N (N = 1, 2, 4)
+
+Đảm bảo 3 tính chất của phân mảnh ngang (theo Özsu & Valduriez):
+Completeness (Đầy đủ): Mọi dòng dữ liệu đều được phân phối vào một node vì phép modulo luôn trả về giá trị hợp lệ từ 0 đến N-1.
+
+Reconstruction (Tái tạo): Dữ liệu gốc có thể được khôi phục bằng UNION tất cả các mảnh.
+
+Disjointness (Tách biệt): Mỗi UserID chỉ thuộc về duy nhất một mảnh, không trùng lặp.
+
+Tối ưu hóa cốt lõi: Khóa phân mảnh (UserID) trùng khớp hoàn toàn với thuộc tính trong mệnh đề GROUP BY. Điều này giúp bài toán trở thành song song hóa lý tưởng (embarrassingly parallel) – dữ liệu của mỗi nhóm nằm trọn vẹn trên một node, loại bỏ hoàn toàn chi phí trao đổi dữ liệu (shuffling) giữa các node.
+
+📁 Cấu trúc thư mục dự án
+text
 ShardMasters/
-├── README.md
-├── requirements.txt
+├── README.md                # Tài liệu hướng dẫn chính
+├── requirements.txt         # Thư viện phụ thuộc (Flask, requests, matplotlib)
 ├── data/
-│   ├── generate.py          # Sinh 1M dòng user_logs.csv
-│   ├── shard.py             # Hash-based sharding (UserID % N)
-│   ├── user_logs.csv        # Dataset gốc (~40MB)
-│   └── shards/              # CSV shards cho từng node
+│   ├── generate.py          # Sinh dữ liệu ngẫu nhiên (1M dòng user_logs.csv)
+│   ├── shard.py             # Phân mảnh dữ liệu (UserID % N)
+│   ├── user_logs.csv        # Tệp dữ liệu gốc (~40MB)
+│   └── shards/              # Các tệp CSV phân mảnh trung gian
 ├── node/
-│   ├── init_db.py           # Import CSV → SQLite + INDEX
-│   └── node_app.py          # Flask node (REST API)
+│   ├── init_db.py           # Khởi tạo DB SQLite từ CSV + tạo chỉ mục B-tree
+│   └── node_app.py          # Ứng dụng Flask chạy trên từng storage node
 ├── coordinator/
-│   └── coordinator.py       # Phân phối query + merge kết quả
+│   └── coordinator.py       # Bộ điều phối trung tâm (ThreadPoolExecutor + merge)
 ├── benchmark/
-│   ├── benchmark.py         # Benchmark tự động 1/2/4 nodes
-│   ├── run_benchmark.py     # One-click pipeline
-│   └── failure_test.py      # Mô phỏng node failure
+│   ├── benchmark.py         # Tự động đo hiệu năng cho cấu hình 1, 2, 4 node
+│   ├── run_benchmark.py     # Pipeline chạy toàn bộ quy trình bằng 1-click
+│   └── failure_test.py      # Kịch bản kiểm thử lỗi và khả năng phục hồi
 ├── analysis/
-│   ├── analyze.py           # Tính Speedup + vẽ biểu đồ
-│   ├── report.md            # Báo cáo phân tích
-│   └── charts/              # Biểu đồ PNG
-├── results/                 # Kết quả benchmark (CSV + JSON)
+│   ├── analyze.py           # Tính toán speedup, efficiency và vẽ biểu đồ
+│   └── charts/              # Các biểu đồ kết quả PNG sinh ra tự động
+├── results/
+│   ├── benchmark_results.csv   # Kết quả đo chi tiết từng lượt chạy
+│   └── benchmark_summary.json  # Tổng hợp kết quả thống kê cuối cùng
 ├── docs/
-│   ├── proposal.md          # Project Proposal
-│   └── design_document.md   # Design Document
+│   ├── proposal.docx        # Đề xuất dự án (project proposal)
+│   ├── design_document.docx # Tài liệu thiết kế hệ thống (design document)
+│   └── report.docx          # Báo cáo phân tích chi tiết (final report)
 └── demo/
-    └── video_demo.mp4       # Video demo
-```
+    └── video_demo.mp4       # Video demo vận hành hệ thống
+🛠️ Cài đặt & Thiết lập
+Yêu cầu hệ thống
+Python 3.10 trở lên
 
----
+Hệ điều hành: Windows / macOS / Linux
 
-## 💻 Yêu cầu hệ thống
+Các bước thiết lập
+Tải mã nguồn về máy cục bộ:
 
-- **Python** 3.10 trở lên
-- **pip** (Python package manager)
-- Hệ điều hành: Windows / macOS / Linux
-
----
-
-## ⚙️ Cài đặt
-
-```bash
-# Clone repository
-git clone <repo-url>
+bash
+git clone https://github.com/TuIT-198/Distributed-Database.git
 cd ShardMasters
+Cài đặt các thư viện cần thiết:
 
-# Cài đặt dependencies
+bash
 pip install -r requirements.txt
-```
+🚀 Hướng dẫn vận hành
+Cách 1: Chạy nhanh bằng 1-Click Pipeline (Khuyên dùng)
+Để tự động thực hiện toàn bộ quy trình: Sinh dữ liệu → Phân mảnh → Khởi tạo DB → Chạy Benchmark → Vẽ biểu đồ, bạn chỉ cần thực thi một lệnh duy nhất:
 
----
-
-## 🚀 Hướng dẫn sử dụng
-
-### Chạy nhanh (One-click Pipeline)
-
-Chạy toàn bộ pipeline từ sinh dữ liệu → phân mảnh → benchmark → phân tích chỉ với một lệnh:
-
-```bash
+bash
 python benchmark/run_benchmark.py
-```
-
-### Chạy từng bước
-
-#### Bước 1: Sinh dữ liệu (1 triệu bản ghi)
-
-```bash
+Cách 2: Thực hiện thủ công từng bước
+Bước 1: Sinh bộ dữ liệu 1 triệu bản ghi
+bash
 python data/generate.py
-```
-
-Tạo file `data/user_logs.csv` chứa 1,000,000 dòng dữ liệu User_Logs.
-
-#### Bước 2: Phân mảnh dữ liệu (Hash-based Sharding)
-
-```bash
+Bước 2: Phân mảnh ngang dữ liệu (N = 1, 2, 4)
+bash
 python data/shard.py --nodes 4
-```
-
-Phân mảnh `user_logs.csv` thành N file CSV trong thư mục `data/shards/` theo công thức `node_id = UserID % N`.
-
-#### Bước 3: Khởi tạo cơ sở dữ liệu SQLite
-
-```bash
+Bước 3: Khởi tạo cơ sở dữ liệu SQLite cục bộ cho từng node
+bash
 python node/init_db.py 0 --csv-dir data/shards --db-dir node
-```
-
-Import CSV shard vào SQLite database, tạo INDEX trên cột `UserID` để tối ưu truy vấn GROUP BY.
-
-#### Bước 4: Chạy benchmark
-
-```bash
+# Lặp lại cho các node 1, 2, 3 tùy cấu hình
+Bước 4: Thực hiện benchmark
+bash
 python benchmark/benchmark.py
-```
-
-Tự động benchmark truy vấn aggregation trên cấu hình 1, 2, và 4 nodes. Kết quả lưu trong thư mục `results/`.
-
-#### Bước 5: Phân tích kết quả
-
-```bash
+Bước 5: Phân tích hiệu năng và xuất biểu đồ
+bash
 python analysis/analyze.py
-```
+📊 Kết quả thực nghiệm
+Kết quả đo đạc chính thức được trích xuất từ tệp results/benchmark_summary.json.
 
-Tính toán Speedup, Efficiency và vẽ biểu đồ lưu vào `analysis/charts/`.
+1. Chi tiết thời gian thực thi (ms)
+Thời gian thực thi được tính bằng max(query_time_ms) – thời gian SQL của node chậm nhất (bottleneck thực tế).
 
-#### Bước 6: Test failure (Mô phỏng lỗi node)
+Cấu hình	Lần 1	Lần 2	Lần 3	Lần 4	Lần 5	Mean	Median	P99	Std
+1 Node	184.2	184.4	180.5	183.2	187.5	183.9	184.2	187.4	2.5
+2 Nodes	93.2	95.1	91.1	95.3	89.5	92.8	93.2	95.3	2.5
+4 Nodes	86.3	80.5	48.8	51.9	74.1	68.3	74.1	86.1	17.0
+2. Speedup và Efficiency
+Cấu hình	Speedup (S)	Efficiency (E)	Nhận xét
+1 Node	1.00x	100.0%	Baseline
+2 Nodes	1.98x	99.1%	Gần như tuyến tính lý tưởng
+4 Nodes	2.69x	67.3%	Hiệu suất giảm do chi phí truyền thông và phần tuần tự
+Hiện tượng Page Cache và B-Tree Depth: Khi phân mảnh dữ liệu nhỏ hơn (1M → 500K → 250K dòng), kích thước file SQLite giảm giúp toàn bộ dữ liệu nằm gọn trong bộ nhớ đệm trang của Hệ điều hành (OS Page Cache). Đồng thời độ sâu của cây chỉ mục B-tree giảm, giúp truy vấn cục bộ trên mỗi node đạt tốc độ nhanh.
 
-```bash
+3. Phân tích theo Định luật Amdahl
+Với speedup đo được ở 4 node (S(4) = 2.692), phần tuần tự (serial fraction) f được ước lượng:
+
+f = (1/2.692 - 1/4) / (1 - 1/4) = (0.3715 - 0.25) / 0.75 = 0.1215 / 0.75 = 16.2%
+
+Các thành phần gây ra phần tuần tự f:
+
+Thời gian coordinator nhận và parse request.
+
+Chi phí khởi tạo và quản lý thread pool (ThreadPoolExecutor).
+
+Chi phí serialization/deserialization JSON.
+
+Thời gian merge kết quả (cộng dồn) tại coordinator.
+
+Giới hạn tăng tốc tối đa khi số node tiến đến vô cùng:
+
+S_max = 1 / f = 1 / 0.162 ≈ 6.17 lần
+
+4. Biểu đồ trực quan hóa hiệu năng
+Các biểu đồ được sinh tự động nằm trong thư mục analysis/charts/:
+
+execution_time.png: So sánh Mean, Median và P99 theo số node.
+
+speedup_ratio.png: Tốc độ tăng tốc thực tế so với lý tưởng.
+
+efficiency.png: Hiệu suất song song theo số node.
+
+🛡️ Kiểm thử chịu lỗi (Graceful Degradation)
+Hệ thống hỗ trợ cơ chế suy giảm chất lượng lũy tiến khi xảy ra sự cố sập nút mạng.
+
+Chạy kịch bản kiểm thử lỗi
+bash
 python benchmark/failure_test.py
-```
+Cách thức hoạt động và phản ứng của hệ thống:
+Kịch bản khởi tạo cụm 4 node hoạt động bình thường → baseline.
 
-Mô phỏng tình huống một node bị lỗi giữa chừng, kiểm tra khả năng degradation graceful của coordinator.
+Mô phỏng sự cố bằng cách tắt đột ngột (kill) Node 2 (chứa các bản ghi có UserID % 4 == 2).
 
----
+Gửi lại truy vấn tổng hợp đến coordinator.
 
-## 📊 Kết quả Benchmark
+Kết quả phản hồi của coordinator:
 
-### Chi tiết thời gian thực thi (ms)
-| Nodes | Mean (ms) | Median (ms) | P99 (ms) | Std (ms) | Min (ms) | Max (ms) |
-| :---: | :-------: | :---------: | :------: | :------: | :------: | :------: |
-|   1   |   232.2   |    223.8    |  286.6   |   32.8   |  205.4   |  289.1   |
-|   2   |   106.3   |     93.5    |  154.0   |   28.1   |   93.4   |  156.4   |
-|   4   |    89.8   |     86.4    |  100.6   |    9.3   |   78.3   |  100.7   |
+Hệ thống không bị crash, tiếp tục hoàn thành yêu cầu.
 
-### Tốc độ tăng tốc (Speedup) & Hiệu suất (Efficiency)
-- **Dựa trên giá trị trung bình (Mean-based):**
-  * **2 Nodes:** Speedup = **2.185x**, Efficiency = **109.3%**
-  * **4 Nodes:** Speedup = **2.587x**, Efficiency = **64.7%**
-- **Dựa trên trung vị (Median-based — Khuyên dùng vì loại bỏ outliers):**
-  * **2 Nodes:** Speedup = **2.395x**, Efficiency = **119.7%**
-  * **4 Nodes:** Speedup = **2.590x**, Efficiency = **64.8%**
+Trạng thái trả về: "status": "partial" (thay vì "success").
 
-> **Ghi chú:** Kết quả đo trên localhost qua 5 lượt chạy thực tế (sau 2 warmup runs). Thời gian đo = max(query_time) trên các node (thời gian thực thi SQL thực tế). Speedup siêu tuyến tính (super-linear) ở cấu hình 2 nodes đạt được nhờ hiệu ứng RAM cache bộ đệm trang đĩa (OS Page Cache) và tối ưu độ sâu cây chỉ mục SQLite B-Tree khi dữ liệu phân mảnh nhỏ đi.
+Số node phản hồi: 3 / 4.
 
+Dữ liệu bị thiếu chính xác ~25% (mất shard trên Node 2).
 
----
+Response có chứa danh sách failed_nodes.
 
-## 📐 Công thức
+Thời gian thực thi tăng do coordinator phải chờ timeout (10 giây) của node chết.
 
-| Chỉ số | Công thức | Ý nghĩa |
-|--------|-----------|----------|
-| **Speedup** | S(n) = T₁ / Tₙ | Tỷ lệ tăng tốc khi sử dụng n nodes so với 1 node |
-| **Efficiency** | E(n) = S(n) / n | Hiệu quả sử dụng tài nguyên (≤ 1.0 = 100%) |
-| **Amdahl's Law** | S(n) ≤ 1 / (f + (1−f)/n) | Giới hạn tăng tốc với f là phần tuần tự |
+Kết luận: Hệ thống đảm bảo graceful degradation – vẫn trả về kết quả có ích dù không đầy đủ.
 
----
+👤 Thành viên thực hiện
+Đàm Công Tú (Mã sinh viên: N23DCCN133)
 
-## 📚 Tài liệu tham khảo
+Nhóm: ShardMasters
 
-1. **Özsu, M.T. & Valduriez, P.** (2020). *Principles of Distributed Database Systems*, 4th Edition. Springer.
-2. **Amdahl, G.** (1967). *Validity of the Single Processor Approach to Achieving Large-Scale Computing Capabilities*. AFIPS Conference Proceedings.
-3. **DeWitt, D. & Gray, J.** (1992). *Parallel Database Systems: The Future of High Performance Database Systems*. Communications of the ACM.
+Giảng viên hướng dẫn: TS. Lê Hà Thanh
 
----
-
-## 👤 Thành viên
-
-| Họ tên | Vai trò |
-|--------|---------|
-| **Đàm Công Tú** | Developer & Analyst |
-
-**Tên nhóm:** ShardMasters
-
----
-
-## 📄 License
-
-MIT License
-
-```
-MIT License
-
-Copyright (c) 2026 ShardMasters — Đàm Công Tú
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+Học viện: Công nghệ Bưu chính Viễn thông (PTIT) – Cơ sở TP. Hồ Chí Minh
 ```
